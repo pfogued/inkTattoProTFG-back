@@ -2,6 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
+use App\Http\Controllers\AuthController;        // Importar AuthController
+use App\Http\Controllers\AppointmentController; // Importar AppointmentController
+use App\Http\Controllers\DesignController;      // <-- Importación CRÍTICA
 
 /*
 |--------------------------------------------------------------------------
@@ -15,8 +18,9 @@ use Illuminate\Http\Request;
 // ----------------------------------------------------
 // 1. RUTAS PÚBLICAS (Login/Registro - RF-1, RF-2)
 // ----------------------------------------------------
-Route::post('/register', [\App\Http\Controllers\AuthController::class, 'register']);
-Route::post('/login', [\App\Http\Controllers\AuthController::class, 'login']);
+// Nota: Utilizamos la sintaxis 'Clase::class' para mayor claridad y modernidad
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
 
 // ----------------------------------------------------
 // 2. RUTAS PROTEGIDAS (Requieren el token JWT de Sanctum)
@@ -24,12 +28,19 @@ Route::post('/login', [\App\Http\Controllers\AuthController::class, 'login']);
 Route::middleware('auth:sanctum')->group(function () {
     
     // Autenticación (RF-4)
-    Route::post('/logout', [\App\Http\Controllers\AuthController::class, 'logout']);
+    Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', function (Request $request) { return $request->user(); });
 
-    // Módulo de Citas (RF-5, RF-6, RF-7, RF-8)
-    Route::get('/appointments', [\App\Http\Controllers\AppointmentController::class, 'index']); // Obtener agenda
-    Route::post('/appointments', [\App\Http\Controllers\AppointmentController::class, 'store']); // Crear cita (Reserva)
-    Route::post('/appointments/{appointment}/confirm', [\App\Http\Controllers\AppointmentController::class, 'confirmAppointment']); // Confirmar (Tatuador)
+    // Módulo de Citas (RF-3, RF-5)
+    Route::get('/appointments', [AppointmentController::class, 'index']); // Obtener agenda (Cliente/Tatuador)
+    Route::post('/appointments', [AppointmentController::class, 'store']); // Crear cita (Reserva por Cliente)
+    Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirmAppointment']); // Confirmar (Tatuador)
+    // NOTA: Se asume que el método 'store' de AppointmentController también gestiona RF-3.
+
+    // Módulo de Diseños (RF-8, RF-9)
+    // RF-9 (index): Ver todos los diseños.
+    // RF-8 (store): Subir un nuevo diseño (solo Tatuador).
+    // Usamos Route::resource para crear GET /designs y POST /designs automáticamente.
+    Route::resource('designs', DesignController::class)->only(['index', 'store']); 
 
 });

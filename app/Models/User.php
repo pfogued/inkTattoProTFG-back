@@ -5,25 +5,24 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens; // <-- IMPORTACIÓN NECESARIA
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    // USO DEL TRAIT: Necesario para que el AuthController pueda usar createToken()
-    use HasApiTokens, HasFactory, Notifiable; 
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
-     * Los atributos que se pueden asignar masivamente (CRUCIAL).
+     * The attributes that are mass assignable.
      */
     protected $fillable = [
         'name',
         'email',
         'password',
-        'role_id', // <-- CAMPO CRÍTICO
+        'role_id', // Para distinguir Cliente (1) de Tatuador (2)
     ];
 
     /**
-     * Los atributos que deberían estar ocultos para la serialización.
+     * The attributes that should be hidden for serialization.
      */
     protected $hidden = [
         'password',
@@ -31,23 +30,13 @@ class User extends Authenticatable
     ];
 
     /**
-     * Define el tipo de datos de los atributos.
-     *
-     * @return array<string, string>
+     * Get the attributes that should be cast. (CRÍTICO: Asegura que la contraseña se hashea)
      */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed', // Asegura el hashing de la contraseña
+            'password' => 'hashed', // <-- Esto es lo que hashea en el registro y permite la comparación.
         ];
-    }
-    
-    // --- LÓGICA ADICIONAL ---
-    
-    // Método de verificación de rol (Usado en el Front-end)
-    public function isTattooArtist()
-    {
-        return $this->role_id === 2;
     }
 }

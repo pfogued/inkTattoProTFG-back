@@ -1,86 +1,81 @@
 <?php
 
-namespace App\Http\Controllers; 
+namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Hash; // CRÍTICO para Login y Hash manual
 
 class AuthController extends Controller
 {
     /**
-     * RF-1: Registrar nuevo usuario (Cliente o Tatuador)
+     * RF-1: Registro de un nuevo usuario (Cliente o Tatuador).
+     * SOLUCIÓN CRÍTICA: Hash manual para asegurar la compatibilidad.
      */
     public function register(Request $request)
     {
-        // RF-14: Validación de campos obligatorios
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|unique:users',
+            'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
-            'role_id' => 'required|integer|in:1,2', // Aseguramos que el rol sea 1 o 2
+            'role_id' => 'required|integer|in:1,2', // 1=Cliente, 2=Tatuador
         ]);
 
+        // 🎯 SOLUCIÓN FINAL: HASH MANUAL
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'password' => Hash::make($request->password), // <-- ¡FORZAMOS EL HASH AQUÍ!
             'role_id' => $request->role_id,
         ]);
 
-        // Creación del token de sesión (Requiere la tabla personal_access_tokens correcta)
+        // El token se crea correctamente
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role_id' => $user->role_id,
-            ]
+            'user' => $user,
+            'message' => 'Registro exitoso'
         ], 201);
     }
 
     /**
-     * RF-2: Iniciar sesión
+     * RF-2: Iniciar sesión del usuario con comprobación manual de hash.
      */
     public function login(Request $request)
     {
         $credentials = $request->validate([
             'email' => 'required|email',
-            'password' => 'required|string|min:8',
+            'password' => 'required',
         ]);
 
-        if (!Auth::attempt($credentials)) {
-            // RF-2: Mensaje de error para credenciales incorrectas
-            throw ValidationException::withMessages([
-                'email' => ['Credenciales incorrectas. Verifique su correo o contraseña.'],
-            ]);
-        }
+        // 1. Buscar al usuario por email
+        $user = User::where('email', $credentials['email'])->first();
 
-        $user = Auth::user();
+        // 2. Comprobación de la contraseña contra el hash de la BD
+        if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            return response()->json(['message' => 'Credenciales incorrectas.'], 401);
+        }
+        
+        // 3. Si la comprobación es exitosa, se crea el token
+        $user->tokens()->delete(); 
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'token' => $token,
-            'user' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role_id' => $user->role_id,
-            ]
+            'user' => $user,
+            'message' => 'Login exitoso'
         ]);
     }
 
     /**
-     * RF-4: Cerrar sesión
+     * RF-4: Cierra la sesión del usuario (revoca el token actual).
      */
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete(); 
-        return response()->json(['message' => 'Sesión cerrada con éxito.'], 200);
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json(['message' => 'Sesión cerrada con éxito']);
     }
 }
