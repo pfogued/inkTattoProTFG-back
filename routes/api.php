@@ -5,20 +5,24 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\AuthController;        
 use App\Http\Controllers\AppointmentController; 
 use App\Http\Controllers\DesignController;     
+use App\Http\Controllers\ChatController;      // <-- NUEVA IMPORTACIÓN
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
+|
+| Este archivo define las rutas para tu aplicación API.
+|
 */
 
 // ----------------------------------------------------
-// 1. RUTAS PÚBLICAS (Login/Registro - RF-1, RF-2)
+// 1. RUTAS PÚBLICAS (Sin Autenticación)
 // ----------------------------------------------------
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
-// RUTA CRÍTICA NUEVA: Obtener lista de Tatuadores para el selector de reserva
+// Obtener lista de Tatuadores para el selector de reserva (PÚBLICO)
 Route::get('tattoo-artists', [AppointmentController::class, 'getTattooArtists']);
 
 // ----------------------------------------------------
@@ -35,11 +39,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/appointments', [AppointmentController::class, 'store']); 
     Route::post('/appointments/{appointment}/confirm', [AppointmentController::class, 'confirmAppointment']); 
     
-    // RUTA PARA MODAL DE DISEÑOS: Obtener clientes asociados al Tatuador
+    // Obtener clientes asociados al Tatuador (para modal de diseños)
     Route::get('clients/associated', [AppointmentController::class, 'getAssociatedClients']); 
 
     // Módulo de Diseños (RF-8, RF-9, RF-10)
     Route::resource('designs', DesignController::class)->only(['index', 'store', 'destroy']); 
     Route::patch('designs/{design}/annotation', [DesignController::class, 'updateAnnotation']);
+
+    // Módulo de Mensajería (RF-11, RF-12) <-- NUEVAS RUTAS
+    // GET /api/chat/{user}: Obtener o crear chat con un usuario
+    Route::get('chat/{user}', [ChatController::class, 'getChat']); 
+    // POST /api/chat/{chat}: Enviar mensaje al chat existente
+    Route::post('chat/{chat}', [ChatController::class, 'sendMessage']); 
+
+    // Obtener lista de todos los usuarios (para el chat)
+    Route::get('users', [AuthController::class, 'getAllUsers']);
 
 });

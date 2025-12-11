@@ -4,25 +4,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | CORS Configuration
+    | Cross-Origin Resource Sharing (CORS) Configuration
     |--------------------------------------------------------------------------
     |
-    | Esta configuración permite que el Front-end de Vue (5173) se comunique 
-    | sin restricciones con el Back-end de Laravel (8000) durante el desarrollo.
+    | Aquí puedes configurar cómo las cabeceras CORS son respondidas por tu aplicación.
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'], 
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'], 
+    // CRÍTICO: Debemos permitir el acceso desde el Front-end de Vue.
+    // Incluir localhost y 127.0.0.1 para cubrir todas las configuraciones de navegador/Vite.
+    'allowed_origins' => [
+        'http://localhost:5173', 
+        'http://127.0.0.1:5173'
+    ],
 
-    // 🎯 CRÍTICO: Permitir cualquier origen (soluciona el bloqueo de red desde localhost:5173)
-    'allowed_origins' => ['*'], 
+    'allowed_methods' => ['*'], // Permite todos los métodos (GET, POST, PUT, DELETE, PATCH, OPTIONS)
 
-    'allowed_origins_patterns' => [],
+    'allowed_headers' => ['*'], // Permite todas las cabeceras enviadas
 
-    'allowed_headers' => ['*'], 
+    'exposed_headers' => [],
 
-    // CRÍTICO: Necesario para que Laravel Sanctum funcione con Axios
-    'supports_credentials' => true, 
+    'max_age' => 0,
+
+    'supports_credentials' => true,
+
 ];
