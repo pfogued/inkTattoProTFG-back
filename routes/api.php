@@ -55,4 +55,6 @@ Route::middleware('auth:sanctum')->group(function () {
     // Obtener lista de todos los usuarios (para el chat)
     Route::get('users', [AuthController::class, 'getAllUsers']);
 
+    // Módulo de Pagos (RF-13)
+    Route::get('/payments', [PaymentController::class, 'index']);
 });

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
-use App\Models\Design; // Asegúrate de que esta importación esté presente si la usaste
-use App\Models\User; // <-- IMPORTACIÓN CRÍTICA
+use App\Models\Payment; // <-- NUEVA IMPORTACIÓN: Modelo de Pago
+use App\Models\User; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -30,7 +30,6 @@ class AppointmentController extends Controller
     {
         $user = Auth::user();
         
-        // Restricción: Solo Tatuadores (role_id=2) pueden obtener esta lista
         if (!$user || $user->role_id !== 2) {
             return response()->json(['message' => 'Acceso denegado.'], 403);
         }
@@ -47,23 +46,20 @@ class AppointmentController extends Controller
     }
 
     /**
-     * RF-3: Permite a un Cliente (role_id=1) reservar una cita con un Tatuador.
+     * RF-3: Permite a un Cliente (role_id=1) reservar una cita con un Tatuador y pagar el depósito.
      */
     public function store(Request $request)
     {
         $user = Auth::user();
         
-        // 1. Verificar si el usuario es un Cliente
         if ($user->role_id !== 1) {
             return response()->json(['message' => 'Solo los Clientes pueden reservar citas.'], 403);
         }
 
-        // 2. Validación
         $request->validate([
             'tattoo_artist_id' => [
                 'required', 
                 'exists:users,id',
-                // Asegurar que el ID proporcionado sea realmente un Tatuador (role_id=2)
                 Rule::exists('users', 'id')->where(function ($query) {
                     return $query->where('role_id', 2);
                 }),
@@ -72,14 +68,15 @@ class AppointmentController extends Controller
             'description' => 'required|string|max:500',
         ]);
 
-        // 3. SIMULACIÓN DE PROCESO DE PAGO DE DEPÓSITO (50€)
-        $paymentSuccess = true; 
+        // 1. SIMULACIÓN DE PROCESO DE PAGO DE DEPÓSITO (50€)
+        $paymentSuccess = true; // SIMULACIÓN: Asumimos que Stripe/PayPal devolvió éxito
+        $depositAmount = 50.00;
         
         if (!$paymentSuccess) {
              return response()->json(['message' => 'Error al procesar el depósito de 50€.'], 400);
         }
 
-        // 4. Creación de la cita
+        // 2. Creación de la cita
         $appointment = Appointment::create([
             'client_id' => $user->id,
             'tattoo_artist_id' => $request->tattoo_artist_id,
@@ -87,10 +84,19 @@ class AppointmentController extends Controller
             'description' => $request->description,
             'status' => 'pending', 
         ]);
+        
+        // 3. REGISTRO DE LA TRANSACCIÓN (RF-13)
+        Payment::create([
+            'client_id' => $user->id,
+            'appointment_id' => $appointment->id,
+            'amount' => $depositAmount,
+            'type' => 'deposit',
+            'status' => 'completed',
+        ]);
 
-        // 5. Devolver confirmación
+        // 4. Devolver confirmación
         return response()->json([
-            'message' => 'Cita reservada con éxito. Pendiente de confirmación del Tatuador.',
+            'message' => 'Cita reservada y depósito pagado con éxito. Pendiente de confirmación del Tatuador.',
             'appointment' => $appointment
         ], 201);
     }
@@ -100,13 +106,12 @@ class AppointmentController extends Controller
      */
     public function index(Request $request)
     {
-        // ... (Tu función index aquí) ...
         $user = Auth::user();
         
         if ($user->role_id === 2) {
             // Tatuador: Ver todas las citas dirigidas a él.
             $appointments = Appointment::where('tattoo_artist_id', $user->id)
-                ->with('client:id,name,email') // Mostrar info del cliente
+                ->with('client:id,name,email') 
                 ->orderBy('scheduled_at')
                 ->get();
 
@@ -115,7 +120,7 @@ class AppointmentController extends Controller
         } else {
             // Cliente: Ver solo sus propias citas.
             $appointments = Appointment::where('client_id', $user->id)
-                ->with('tattooArtist:id,name') // Mostrar info del tatuador
+                ->with('tattooArtist:id,name') 
                 ->orderBy('scheduled_at')
                 ->get();
             
@@ -133,20 +138,16 @@ class AppointmentController extends Controller
      */
     public function confirmAppointment(Request $request, Appointment $appointment)
     {
-        // ... (Tu función confirmAppointment aquí) ...
         $user = Auth::user();
         
-        // 1. Restricción: Solo Tatuadores pueden confirmar.
         if ($user->role_id !== 2) {
-            return response()->json(['message' => 'Acceso denegado. Solo Tatuadores pueden confirmar citas.'], 403);
+            return response()->json(['message' => 'Acceso denegado.'], 403);
         }
 
-        // 2. Restricción: Solo el Tatuador asignado puede confirmar.
         if ($appointment->tattoo_artist_id !== $user->id) {
             return response()->json(['message' => 'No tienes permiso para confirmar esta cita.'], 403);
         }
 
-        // 3. Confirmación: Si el estado es 'pending', lo cambiamos a 'approved'.
         if ($appointment->status === 'pending') {
             $appointment->status = 'approved';
             $appointment->save();
