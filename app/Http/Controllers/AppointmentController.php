@@ -2,107 +2,161 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Appointment; 
+use App\Models\Appointment;
+use App\Models\Design; // Asegúrate de que esta importación esté presente si la usaste
+use App\Models\User; // <-- IMPORTACIÓN CRÍTICA
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon; 
+use Illuminate\Validation\Rule;
 
 class AppointmentController extends Controller
 {
     /**
-     * RF-5: Valida y crea una nueva cita (Reserva).
+     * Obtiene la lista de todos los Tatuadores (role_id = 2) disponibles.
+     */
+    public function getTattooArtists()
+    {
+        $artists = User::where('role_id', 2)
+                        ->select('id', 'name')
+                        ->get();
+
+        return response()->json(['artists' => $artists]);
+    }
+
+    /**
+     * Obtiene la lista única de Clientes que han reservado citas con el Tatuador (para Design Modal).
+     */
+    public function getAssociatedClients()
+    {
+        $user = Auth::user();
+        
+        // Restricción: Solo Tatuadores (role_id=2) pueden obtener esta lista
+        if (!$user || $user->role_id !== 2) {
+            return response()->json(['message' => 'Acceso denegado.'], 403);
+        }
+
+        $clientIds = Appointment::where('tattoo_artist_id', $user->id)
+                                ->distinct('client_id')
+                                ->pluck('client_id');
+        
+        $clients = User::whereIn('id', $clientIds)
+                       ->select('id', 'name')
+                       ->get();
+
+        return response()->json(['clients' => $clients]);
+    }
+
+    /**
+     * RF-3: Permite a un Cliente (role_id=1) reservar una cita con un Tatuador.
      */
     public function store(Request $request)
     {
-        $client_id = Auth::id(); 
+        $user = Auth::user();
         
-        $request->validate([
-            'tattoo_artist_id' => 'required|exists:users,id',
-            'appointment_date' => 'required|date|after_or_equal:today',
-            'appointment_time' => 'required|date_format:H:i',
-            'duration_minutes' => 'integer|min:30', 
-            'details' => 'required|string|min:20',
-        ]);
-        
-        $date = $request->input('appointment_date');
-        $time = $request->input('appointment_time');
-        $artistId = $request->input('tattoo_artist_id');
-
-        // RF-6: Verificar disponibilidad
-        if (!$this->checkAvailability($artistId, $date, $time)) {
-            throw ValidationException::withMessages([
-                'schedule' => ['El tatuador no está disponible en la hora seleccionada. Conflicto de cita.'],
-            ]);
+        // 1. Verificar si el usuario es un Cliente
+        if ($user->role_id !== 1) {
+            return response()->json(['message' => 'Solo los Clientes pueden reservar citas.'], 403);
         }
-        
-        $appointment = Appointment::create([
-            'user_id' => $client_id,
-            'tattoo_artist_id' => $artistId,
-            'appointment_date' => $date,
-            'appointment_time' => $time,
-            'duration_minutes' => $request->input('duration_minutes', 60),
-            'details' => $request->details,
-            'status' => 'pending', // Siempre inicia como pendiente de pago
+
+        // 2. Validación
+        $request->validate([
+            'tattoo_artist_id' => [
+                'required', 
+                'exists:users,id',
+                // Asegurar que el ID proporcionado sea realmente un Tatuador (role_id=2)
+                Rule::exists('users', 'id')->where(function ($query) {
+                    return $query->where('role_id', 2);
+                }),
+            ],
+            'scheduled_at' => 'required|date|after:now',
+            'description' => 'required|string|max:500',
         ]);
 
+        // 3. SIMULACIÓN DE PROCESO DE PAGO DE DEPÓSITO (50€)
+        $paymentSuccess = true; 
+        
+        if (!$paymentSuccess) {
+             return response()->json(['message' => 'Error al procesar el depósito de 50€.'], 400);
+        }
+
+        // 4. Creación de la cita
+        $appointment = Appointment::create([
+            'client_id' => $user->id,
+            'tattoo_artist_id' => $request->tattoo_artist_id,
+            'scheduled_at' => $request->scheduled_at,
+            'description' => $request->description,
+            'status' => 'pending', 
+        ]);
+
+        // 5. Devolver confirmación
         return response()->json([
-            'message' => 'Cita creada como pendiente de pago.',
-            'appointment_id' => $appointment->id,
+            'message' => 'Cita reservada con éxito. Pendiente de confirmación del Tatuador.',
+            'appointment' => $appointment
         ], 201);
     }
-    
-    /**
-     * RF-6: Verifica si hay citas solapadas para el tatuador en esa hora.
-     */
-    private function checkAvailability($artistId, $date, $time)
-    {
-        $overlappingAppointment = Appointment::where('tattoo_artist_id', $artistId)
-            ->where('appointment_date', $date)
-            ->where('status', '!=', 'cancelled')
-            ->where('appointment_time', $time) 
-            ->exists();
-
-        return !$overlappingAppointment;
-    }
 
     /**
-     * RF-8: Obtiene la agenda.
+     * RF-5: Muestra la agenda del Tatuador o las citas del Cliente.
      */
     public function index(Request $request)
     {
+        // ... (Tu función index aquí) ...
         $user = Auth::user();
-
+        
         if ($user->role_id === 2) {
-            // Tatuador (Rol 2): Ver todas las citas asignadas a él.
+            // Tatuador: Ver todas las citas dirigidas a él.
             $appointments = Appointment::where('tattoo_artist_id', $user->id)
-                ->with(['user', 'tattooArtist'])
+                ->with('client:id,name,email') // Mostrar info del cliente
+                ->orderBy('scheduled_at')
                 ->get();
+
+            $message = 'Agenda de citas cargada.';
+
         } else {
-            // Cliente (Rol 1): Ver solo sus citas.
-            $appointments = Appointment::where('user_id', $user->id)
-                ->with(['user', 'tattooArtist'])
+            // Cliente: Ver solo sus propias citas.
+            $appointments = Appointment::where('client_id', $user->id)
+                ->with('tattooArtist:id,name') // Mostrar info del tatuador
+                ->orderBy('scheduled_at')
                 ->get();
+            
+            $message = 'Tus citas cargadas.';
         }
 
-        return response()->json($appointments);
+        return response()->json([
+            'message' => $message,
+            'appointments' => $appointments
+        ]);
     }
-
+    
     /**
-     * CU-12: Tatuador confirma una cita pendiente.
+     * RF-6: Permite al Tatuador confirmar una cita pendiente.
      */
-    public function confirmAppointment(Appointment $appointment)
+    public function confirmAppointment(Request $request, Appointment $appointment)
     {
-        if (Auth::id() !== $appointment->tattoo_artist_id) {
-            return response()->json(['message' => 'No autorizado.'], 403);
+        // ... (Tu función confirmAppointment aquí) ...
+        $user = Auth::user();
+        
+        // 1. Restricción: Solo Tatuadores pueden confirmar.
+        if ($user->role_id !== 2) {
+            return response()->json(['message' => 'Acceso denegado. Solo Tatuadores pueden confirmar citas.'], 403);
         }
 
+        // 2. Restricción: Solo el Tatuador asignado puede confirmar.
+        if ($appointment->tattoo_artist_id !== $user->id) {
+            return response()->json(['message' => 'No tienes permiso para confirmar esta cita.'], 403);
+        }
+
+        // 3. Confirmación: Si el estado es 'pending', lo cambiamos a 'approved'.
         if ($appointment->status === 'pending') {
-            $appointment->status = 'confirmed';
+            $appointment->status = 'approved';
             $appointment->save();
-            return response()->json(['message' => 'Cita confirmada con éxito.']);
-        }
 
-        return response()->json(['message' => 'La cita no está pendiente de confirmación.'], 400);
+            return response()->json([
+                'message' => 'Cita confirmada con éxito.',
+                'appointment' => $appointment
+            ]);
+        }
+        
+        return response()->json(['message' => 'La cita ya fue confirmada o cancelada previamente.'], 400);
     }
 }
