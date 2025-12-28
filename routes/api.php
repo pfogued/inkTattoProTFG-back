@@ -7,6 +7,7 @@ use App\Http\Controllers\AppointmentController;
 use App\Http\Controllers\DesignController;     
 use App\Http\Controllers\ChatController;      
 use App\Http\Controllers\PaymentController;    
+use App\Http\Controllers\SocialAuthController;
 
 /*
 |--------------------------------------------------------------------------
@@ -20,6 +21,8 @@ use App\Http\Controllers\PaymentController;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('tattoo-artists', [AppointmentController::class, 'getTattooArtists']);
+Route::get('auth/{provider}/redirect', [SocialAuthController::class, 'redirectToProvider']);
+Route::get('auth/{provider}/callback', [SocialAuthController::class, 'handleProviderCallback']);
 
 // ----------------------------------------------------
 // 2. RUTAS PROTEGIDAS (Requieren el token JWT de Sanctum)

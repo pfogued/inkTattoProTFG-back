@@ -19,6 +19,8 @@ class User extends Authenticatable
         'email',
         'password',
         'role_id', // Para distinguir Cliente (1) de Tatuador (2)
+        'provider',    
+        'provider_id',
     ];
 
     /**
