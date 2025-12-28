@@ -49,6 +49,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('designs/{design}/annotation', [DesignController::class, 'updateAnnotation']);
     Route::get('chat/{user}', [ChatController::class, 'getChat']); 
     Route::post('chat/{chat}', [ChatController::class, 'sendMessage']); 
-    Route::get('/payments', [PaymentController::class, 'index']); 
+
+    // --- Módulo de Pagos (Stripe) ---
+    Route::get('/payments', [PaymentController::class, 'index']); // Historial
+    Route::post('/payments/create-intent', [PaymentController::class, 'createPaymentIntent']); // Paso 1: Stripe
+    Route::post('/payments', [PaymentController::class, 'store']); // Paso 2: Guardar en DB (ESTA ES LA QUE FALTABA)
 
 });

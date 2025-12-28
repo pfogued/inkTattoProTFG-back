@@ -14,9 +14,10 @@ class Payment extends Model
      * Los atributos que se pueden asignar masivamente.
      */
     protected $fillable = [
-        'client_id',       // <-- CRÍTICO: Necesario para RF-13
-        'appointment_id',  // <-- CRÍTICO: Necesario para el historial
+        'client_id',      
+        'appointment_id', 
         'amount',
+        'stripe_id',    // <-- ESTE FALTABA: Sin él, Laravel da error 500 al guardar
         'type',
         'status',
     ];
