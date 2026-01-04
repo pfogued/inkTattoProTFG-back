@@ -24,7 +24,7 @@ class AppointmentController extends Controller
     }
 
     /**
-     * Obtiene la lista única de Clientes que han reservado citas con el Tatuador (para Design Modal).
+     * Obtiene la lista única de Clientes que han reservado citas con el Tatuador.
      */
     public function getAssociatedClients()
     {
@@ -46,7 +46,7 @@ class AppointmentController extends Controller
     }
 
     /**
-     * RF-3: Permite a un Cliente (role_id=1) reservar una cita con un Tatuador y pagar el depósito.
+     * RF-3: Permite a un Cliente reservar una cita y pagar el depósito.
      */
     public function store(Request $request)
     {
@@ -56,6 +56,7 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Solo los Clientes pueden reservar citas.'], 403);
         }
 
+        // --- VALIDACIÓN CON MENSAJES EN ESPAÑOL ---
         $request->validate([
             'tattoo_artist_id' => [
                 'required', 
@@ -66,17 +67,15 @@ class AppointmentController extends Controller
             ],
             'scheduled_at' => 'required|date|after:now',
             'description' => 'required|string|max:500',
+        ], [
+            'scheduled_at.after' => 'La fecha de la cita debe ser posterior a la hora actual.',
+            'scheduled_at.required' => 'La fecha y hora son obligatorias.',
+            'description.required' => 'Debes proporcionar una descripción para el tatuaje.',
+            'tattoo_artist_id.exists' => 'El tatuador seleccionado no es válido.'
         ]);
 
-        // SIMULACIÓN DE PROCESO DE PAGO DE DEPÓSITO (50€)
-        $paymentSuccess = true; 
         $depositAmount = 50.00;
-        
-        if (!$paymentSuccess) {
-             return response()->json(['message' => 'Error al procesar el depósito de 50€.'], 400);
-        }
 
-        // Creación de la cita
         $appointment = Appointment::create([
             'client_id' => $user->id,
             'tattoo_artist_id' => $request->tattoo_artist_id,
@@ -85,7 +84,6 @@ class AppointmentController extends Controller
             'status' => 'pending', 
         ]);
         
-        // REGISTRO DE LA TRANSACCIÓN (RF-13)
         Payment::create([
             'client_id' => $user->id,
             'appointment_id' => $appointment->id,
@@ -95,14 +93,11 @@ class AppointmentController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Cita reservada y depósito pagado con éxito. Pendiente de confirmación del Tatuador.',
+            'message' => 'Cita reservada y depósito pagado con éxito. Pendiente de confirmación.',
             'appointment' => $appointment
         ], 201);
     }
 
-    /**
-     * RF-5: Muestra la agenda del Tatuador o las citas del Cliente.
-     */
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -112,15 +107,12 @@ class AppointmentController extends Controller
                 ->with('client:id,name,email') 
                 ->orderBy('scheduled_at')
                 ->get();
-
             $message = 'Agenda de citas cargada.';
-
         } else {
             $appointments = Appointment::where('client_id', $user->id)
                 ->with('tattooArtist:id,name') 
                 ->orderBy('scheduled_at')
                 ->get();
-            
             $message = 'Tus citas cargadas.';
         }
 
@@ -130,9 +122,6 @@ class AppointmentController extends Controller
         ]);
     }
     
-    /**
-     * RF-6: Permite al Tatuador confirmar una cita pendiente.
-     */
     public function confirmAppointment(Request $request, Appointment $appointment)
     {
         $user = Auth::user();
@@ -155,25 +144,28 @@ class AppointmentController extends Controller
     }
     
     /**
-     * RF-7: Permite al Cliente o al Tatuador modificar una cita (fecha/descripción).
+     * RF-7: Modificar cita con validación en ESPAÑOL.
      */
     public function update(Request $request, Appointment $appointment)
     {
         $user = Auth::user();
         
-        // Restricción: Solo el dueño o el tatuador asignado
         if ($appointment->client_id !== $user->id && $appointment->tattoo_artist_id !== $user->id) {
             return response()->json(['message' => 'Acceso denegado.'], 403);
         }
 
-        // Restricción: Solo si el estado es 'pending' o 'approved' 
         if ($appointment->status === 'canceled') {
              return response()->json(['message' => 'No se puede modificar una cita cancelada.'], 400);
         }
 
+        // --- VALIDACIÓN CON MENSAJES EN ESPAÑOL ---
         $data = $request->validate([
             'scheduled_at' => 'required|date|after:now',
             'description' => 'required|string|max:500',
+        ], [
+            'scheduled_at.after' => 'La fecha de la cita debe ser una fecha futura.',
+            'scheduled_at.required' => 'La fecha es necesaria para reprogramar.',
+            'description.required' => 'La descripción no puede estar vacía.'
         ]);
 
         $appointment->update($data);
@@ -184,16 +176,12 @@ class AppointmentController extends Controller
         ], 200);
     }
 
-    /**
-     * RF-7: Permite al Cliente o al Tatuador cancelar una cita.
-     */
     public function cancelAppointment(Appointment $appointment)
     {
         $user = Auth::user();
         
-        // Restricción: Solo el dueño o el tatuador asignado
         if ($appointment->client_id !== $user->id && $appointment->tattoo_artist_id !== $user->id) {
-            return response()->json(['message' => 'Acceso denegado. No eres el dueño ni el artista asignado.'], 403);
+            return response()->json(['message' => 'Acceso denegado.'], 403);
         }
 
         if ($appointment->status === 'canceled') {
