@@ -14,11 +14,15 @@ return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     // CRÍTICO: Debemos permitir el acceso desde el Front-end de Vue.
-    // Incluir localhost y 127.0.0.1 para cubrir todas las configuraciones de navegador/Vite.
+    // Must use specific origins when credentials are enabled (not *)
     'allowed_origins' => [
-        'http://localhost:5173', 
-        'http://127.0.0.1:5173'
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
     ],
+    
+    'allowed_origins_patterns' => [],
 
     'allowed_methods' => ['*'], // Permite todos los métodos (GET, POST, PUT, DELETE, PATCH, OPTIONS)
 
@@ -26,7 +30,7 @@ return [
 
     'exposed_headers' => [],
 
-    'max_age' => 0,
+    'max_age' => 9999,
 
     'supports_credentials' => true,
 
