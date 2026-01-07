@@ -18,6 +18,7 @@ RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
 # Enable Apache modules
 RUN a2enmod rewrite headers
 RUN a2dismod mpm_prefork
+RUN a2dismod worker
 
 # Set working directory
 WORKDIR /var/www/html
