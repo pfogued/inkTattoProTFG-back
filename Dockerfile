@@ -54,8 +54,18 @@ RUN echo '<Directory ${APACHE_DOCUMENT_ROOT}>\n\
 </Directory>' > /etc/apache2/conf-available/laravel.conf \
     && a2enconf laravel
 
+
+COPY docker-entrypoint.sh /usr/local/bin/
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Start Apache via custom entrypoint
+
+CMD ["/usr/local/bin/docker-entrypoint.sh"]
+
 EXPOSE 80
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
     CMD curl -f http://localhost/ || exit 1
+    
