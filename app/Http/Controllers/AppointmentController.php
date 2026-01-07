@@ -12,41 +12,8 @@ use Illuminate\Validation\Rule;
 class AppointmentController extends Controller
 {
     /**
-     * Obtiene la lista de todos los Tatuadores (role_id = 2) disponibles.
-     */
-    public function getTattooArtists()
-    {
-        $artists = User::where('role_id', 2)
-                        ->select('id', 'name')
-                        ->get();
-
-        return response()->json(['artists' => $artists]);
-    }
-
-    /**
-     * Obtiene la lista única de Clientes que han reservado citas con el Tatuador.
-     */
-    public function getAssociatedClients()
-    {
-        $user = Auth::user();
-        
-        if (!$user || $user->role_id !== 2) {
-            return response()->json(['message' => 'Acceso denegado.'], 403);
-        }
-
-        $clientIds = Appointment::where('tattoo_artist_id', $user->id)
-                                ->distinct('client_id')
-                                ->pluck('client_id');
-        
-        $clients = User::whereIn('id', $clientIds)
-                       ->select('id', 'name')
-                       ->get();
-
-        return response()->json(['clients' => $clients]);
-    }
-
-    /**
-     * RF-3: Permite a un Cliente reservar una cita y pagar el depósito.
+     * RF-3: Reservar cita. 
+     * ELIMINADA la creación automática de pago aquí.
      */
     public function store(Request $request)
     {
@@ -56,7 +23,6 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Solo los Clientes pueden reservar citas.'], 403);
         }
 
-        // --- VALIDACIÓN CON MENSAJES EN ESPAÑOL ---
         $request->validate([
             'tattoo_artist_id' => [
                 'required', 
@@ -74,8 +40,7 @@ class AppointmentController extends Controller
             'tattoo_artist_id.exists' => 'El tatuador seleccionado no es válido.'
         ]);
 
-        $depositAmount = 50.00;
-
+        // SOLO CREAMOS LA CITA. El pago se hará desde la pasarela de Stripe.
         $appointment = Appointment::create([
             'client_id' => $user->id,
             'tattoo_artist_id' => $request->tattoo_artist_id,
@@ -84,33 +49,32 @@ class AppointmentController extends Controller
             'status' => 'pending', 
         ]);
         
-        Payment::create([
-            'client_id' => $user->id,
-            'appointment_id' => $appointment->id,
-            'amount' => $depositAmount,
-            'type' => 'deposit',
-            'status' => 'completed',
-        ]);
+        // BORRADO: Payment::create([...]) -> Esto causaba el duplicado sin stripe_id.
 
         return response()->json([
-            'message' => 'Cita reservada y depósito pagado con éxito. Pendiente de confirmación.',
+            'message' => 'Cita reservada. Procede al pago del depósito para que el tatuador pueda confirmarla.',
             'appointment' => $appointment
         ], 201);
     }
 
+    /**
+     * index: Lista de citas. 
+     * AÑADIDO: with('payments') para que el botón de pago desaparezca en Vue.
+     */
     public function index(Request $request)
     {
         $user = Auth::user();
         
+        // Cargamos siempre con la relación 'payments' para el control de la interfaz
         if ($user->role_id === 2) {
             $appointments = Appointment::where('tattoo_artist_id', $user->id)
-                ->with('client:id,name,email') 
+                ->with(['client:id,name,email', 'payments']) // <-- IMPORTANTE
                 ->orderBy('scheduled_at')
                 ->get();
             $message = 'Agenda de citas cargada.';
         } else {
             $appointments = Appointment::where('client_id', $user->id)
-                ->with('tattooArtist:id,name') 
+                ->with(['tattooArtist:id,name', 'payments']) // <-- IMPORTANTE
                 ->orderBy('scheduled_at')
                 ->get();
             $message = 'Tus citas cargadas.';
@@ -121,11 +85,12 @@ class AppointmentController extends Controller
             'appointments' => $appointments
         ]);
     }
+
+    // ... Resto de funciones (confirmAppointment, update, cancelAppointment) se mantienen igual ...
     
     public function confirmAppointment(Request $request, Appointment $appointment)
     {
         $user = Auth::user();
-        
         if ($user->role_id !== 2 || $appointment->tattoo_artist_id !== $user->id) {
             return response()->json(['message' => 'Acceso denegado.'], 403);
         }
@@ -133,32 +98,20 @@ class AppointmentController extends Controller
         if ($appointment->status === 'pending') {
             $appointment->status = 'approved';
             $appointment->save();
-
-            return response()->json([
-                'message' => 'Cita confirmada con éxito.',
-                'appointment' => $appointment
-            ]);
+            return response()->json(['message' => 'Cita confirmada con éxito.', 'appointment' => $appointment]);
         }
-        
         return response()->json(['message' => 'La cita ya fue confirmada o cancelada previamente.'], 400);
     }
-    
-    /**
-     * RF-7: Modificar cita con validación en ESPAÑOL.
-     */
+
     public function update(Request $request, Appointment $appointment)
     {
         $user = Auth::user();
-        
         if ($appointment->client_id !== $user->id && $appointment->tattoo_artist_id !== $user->id) {
             return response()->json(['message' => 'Acceso denegado.'], 403);
         }
-
         if ($appointment->status === 'canceled') {
              return response()->json(['message' => 'No se puede modificar una cita cancelada.'], 400);
         }
-
-        // --- VALIDACIÓN CON MENSAJES EN ESPAÑOL ---
         $data = $request->validate([
             'scheduled_at' => 'required|date|after:now',
             'description' => 'required|string|max:500',
@@ -167,30 +120,26 @@ class AppointmentController extends Controller
             'scheduled_at.required' => 'La fecha es necesaria para reprogramar.',
             'description.required' => 'La descripción no puede estar vacía.'
         ]);
-
         $appointment->update($data);
-
-        return response()->json([
-            'message' => 'Cita actualizada con éxito.', 
-            'appointment' => $appointment
-        ], 200);
+        return response()->json(['message' => 'Cita actualizada con éxito.', 'appointment' => $appointment], 200);
     }
 
     public function cancelAppointment(Appointment $appointment)
     {
         $user = Auth::user();
-        
         if ($appointment->client_id !== $user->id && $appointment->tattoo_artist_id !== $user->id) {
             return response()->json(['message' => 'Acceso denegado.'], 403);
         }
-
         if ($appointment->status === 'canceled') {
             return response()->json(['message' => 'La cita ya está cancelada.'], 400);
         }
-
         $appointment->status = 'canceled';
         $appointment->save();
-
         return response()->json(['message' => 'Cita cancelada con éxito.'], 200);
+    }
+
+    public function getTattooArtists() {
+        $artists = User::where('role_id', 2)->select('id', 'name')->get();
+        return response()->json(['artists' => $artists]);
     }
 }

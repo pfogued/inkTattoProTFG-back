@@ -15,26 +15,25 @@ class PaymentController extends Controller
      * RF-13: Muestra el historial de pagos del usuario logueado.
      */
     public function index()
-{
-    $user = Auth::user();
+    {
+        $user = Auth::user();
 
-    if ($user->role_id === 1) { // CLIENTE
-        $payments = Payment::where('client_id', $user->id)
-            ->with(['appointment.tattooArtist']) 
+        if ($user->role_id === 1) { // CLIENTE
+            $payments = Payment::where('client_id', $user->id)
+                ->with(['appointment.tattooArtist']) 
+                ->latest()
+                ->get();
+        } else { // TATUADOR (role_id === 2)
+            $payments = Payment::whereHas('appointment', function ($query) use ($user) {
+                $query->where('tattoo_artist_id', $user->id);
+            })
+            ->with(['appointment', 'client']) 
             ->latest()
             ->get();
-    } else { // TATUADOR (role_id === 2)
-        // Buscamos pagos donde la cita pertenezca a este tatuador
-        $payments = Payment::whereHas('appointment', function ($query) use ($user) {
-            $query->where('tattoo_artist_id', $user->id);
-        })
-        ->with(['appointment', 'client']) // Cargamos quién pagó y qué cita es
-        ->latest()
-        ->get();
-    }
+        }
 
-    return response()->json(['payments' => $payments]);
-}
+        return response()->json(['payments' => $payments]);
+    }
 
     /**
      * Paso 1: Crea un Payment Intent en Stripe.
@@ -46,8 +45,7 @@ class PaymentController extends Controller
             'appointment_id' => 'required|exists:appointments,id'
         ]);
 
-        // Usamos la clave del .env o la que proporciones
-        Stripe::setApiKey(env('STRIPE_SECRET', 'sk_test_51SjM6dFEByp3k6AXxY9v...')); // Pon aquí tu clave completa si no usas .env
+        Stripe::setApiKey(env('STRIPE_SECRET')); 
 
         try {
             $paymentIntent = PaymentIntent::create([
@@ -69,8 +67,7 @@ class PaymentController extends Controller
     }
 
     /**
-     * Paso 2: RF-13 - Guarda el pago en la base de datos tras el éxito en Stripe.
-     * Esta es la función que te faltaba y causaba el error 500.
+     * Paso 2: Guarda el pago evitando duplicados y mantiene la cita pendiente.
      */
     public function store(Request $request)
     {
@@ -82,20 +79,32 @@ class PaymentController extends Controller
         ]);
 
         try {
+            // 1. COMPROBACIÓN DE DUPLICADOS: Si el stripe_id ya existe, no creamos otro.
+            $existingPayment = Payment::where('stripe_id', $request->stripe_id)->first();
+            
+            if ($existingPayment) {
+                return response()->json([
+                    'message' => 'El pago ya estaba registrado.',
+                    'payment' => $existingPayment
+                ], 200);
+            }
+
+            // 2. CREACIÓN DEL PAGO
             $payment = Payment::create([
                 'client_id'      => Auth::id(),
                 'appointment_id' => $request->appointment_id,
                 'amount'         => $request->amount,
                 'stripe_id'      => $request->stripe_id,
-                'status'         => $request->status, // 'completed'
-                'type'           => 'deposit',    // Identificador para tu historial
+                'status'         => $request->status, 
+                'type'           => 'deposit',
             ]);
 
-             $appointment = Appointment::find($request->appointment_id);
-             $appointment->update(['status' => 'approved']);
+            // 3. ACTUALIZACIÓN DE LA CITA: Se queda en 'pending' para que el artista confirme.
+            $appointment = Appointment::find($request->appointment_id);
+            $appointment->update(['status' => 'pending']);
 
             return response()->json([
-                'message' => 'Pago registrado correctamente en la base de datos.',
+                'message' => 'Pago registrado correctamente. Cita pendiente de validación.',
                 'payment' => $payment
             ], 201);
 
