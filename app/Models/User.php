@@ -32,13 +32,23 @@ class User extends Authenticatable
     ];
 
     /**
-     * Get the attributes that should be cast. (CRÍTICO: Asegura que la contraseña se hashea)
+     * Get the attributes that should be cast.
      */
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
-            'password' => 'hashed', // <-- Esto es lo que hashea en el registro y permite la comparación.
+            'password' => 'hashed',
         ];
+    }
+
+    /**
+     * RELACIÓN: Citas como cliente.
+     * Esto permite al sistema saber qué citas tiene asociadas este usuario.
+     */
+    public function appointmentsAsClient()
+    {
+        // Conecta el ID del usuario con la columna 'client_id' de la tabla 'appointments'
+        return $this->hasMany(Appointment::class, 'client_id');
     }
 }
