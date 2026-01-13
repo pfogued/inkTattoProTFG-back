@@ -13,7 +13,6 @@ class AppointmentController extends Controller
 {
     /**
      * RF-3: Reservar cita. 
-     * ELIMINADA la creación automática de pago aquí.
      */
     public function store(Request $request)
     {
@@ -40,7 +39,6 @@ class AppointmentController extends Controller
             'tattoo_artist_id.exists' => 'El tatuador seleccionado no es válido.'
         ]);
 
-        // SOLO CREAMOS LA CITA. El pago se hará desde la pasarela de Stripe.
         $appointment = Appointment::create([
             'client_id' => $user->id,
             'tattoo_artist_id' => $request->tattoo_artist_id,
@@ -49,8 +47,6 @@ class AppointmentController extends Controller
             'status' => 'pending', 
         ]);
         
-        // BORRADO: Payment::create([...]) -> Esto causaba el duplicado sin stripe_id.
-
         return response()->json([
             'message' => 'Cita reservada. Procede al pago del depósito para que el tatuador pueda confirmarla.',
             'appointment' => $appointment
@@ -59,22 +55,20 @@ class AppointmentController extends Controller
 
     /**
      * index: Lista de citas. 
-     * AÑADIDO: with('payments') para que el botón de pago desaparezca en Vue.
      */
     public function index(Request $request)
     {
         $user = Auth::user();
         
-        // Cargamos siempre con la relación 'payments' para el control de la interfaz
         if ($user->role_id === 2) {
             $appointments = Appointment::where('tattoo_artist_id', $user->id)
-                ->with(['client:id,name,email', 'payments']) // <-- IMPORTANTE
+                ->with(['client:id,name,email', 'payments'])
                 ->orderBy('scheduled_at')
                 ->get();
             $message = 'Agenda de citas cargada.';
         } else {
             $appointments = Appointment::where('client_id', $user->id)
-                ->with(['tattooArtist:id,name', 'payments']) // <-- IMPORTANTE
+                ->with(['tattooArtist:id,name', 'payments'])
                 ->orderBy('scheduled_at')
                 ->get();
             $message = 'Tus citas cargadas.';
@@ -85,8 +79,6 @@ class AppointmentController extends Controller
             'appointments' => $appointments
         ]);
     }
-
-    // ... Resto de funciones (confirmAppointment, update, cancelAppointment) se mantienen igual ...
     
     public function confirmAppointment(Request $request, Appointment $appointment)
     {
@@ -141,5 +133,31 @@ class AppointmentController extends Controller
     public function getTattooArtists() {
         $artists = User::where('role_id', 2)->select('id', 'name')->get();
         return response()->json(['artists' => $artists]);
+    }
+
+    /**
+     * NUEVO MÉTODO: Obtener los clientes que tienen citas con el tatuador logueado.
+     * Útil para el selector de la galería.
+     */
+    public function getMyClients()
+    {
+        $user = Auth::user();
+
+        // Seguridad: Solo tatuadores (role_id 2)
+        if ($user->role_id !== 2) {
+            return response()->json(['message' => 'Solo los tatuadores pueden ver sus clientes.'], 403);
+        }
+
+        // Buscamos usuarios que tengan al menos una cita con este tatuador
+        // Usamos la relación definida en el modelo User
+        $clients = User::whereHas('appointmentsAsClient', function ($query) use ($user) {
+            $query->where('tattoo_artist_id', $user->id);
+        })
+        ->select('id', 'name', 'email')
+        ->get();
+
+        return response()->json([
+            'clients' => $clients
+        ]);
     }
 }
