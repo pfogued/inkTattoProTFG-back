@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use App\Http\Controllers\AuthController;        
 use App\Http\Controllers\AppointmentController; 
-use App\Http\Controllers\DesignController;     
+use App\Http\Controllers\DesignController;      
 use App\Http\Controllers\ChatController;      
 use App\Http\Controllers\PaymentController;    
 use App\Http\Controllers\SocialAuthController;
@@ -43,16 +43,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/appointments/{appointment}', [AppointmentController::class, 'update']); 
     Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancelAppointment']); 
 
+    // --- NUEVA RUTA PARA GALERÍA (Arreglo) ---
+    // Esta es la que llama a la función que añadimos al controlador
+    Route::get('/my-clients', [AppointmentController::class, 'getMyClients']); 
+
     // Módulos de Diseños, Chat, y Pagos
-    Route::get('clients/associated', [AppointmentController::class, 'getAssociatedClients']); 
     Route::resource('designs', DesignController::class)->only(['index', 'store', 'destroy']); 
     Route::patch('designs/{design}/annotation', [DesignController::class, 'updateAnnotation']);
     Route::get('chat/{user}', [ChatController::class, 'getChat']); 
     Route::post('chat/{chat}', [ChatController::class, 'sendMessage']); 
 
     // --- Módulo de Pagos (Stripe) ---
-    Route::get('/payments', [PaymentController::class, 'index']); // Historial
-    Route::post('/payments/create-intent', [PaymentController::class, 'createPaymentIntent']); // Paso 1: Stripe
-    Route::post('/payments', [PaymentController::class, 'store']); // Paso 2: Guardar en DB (ESTA ES LA QUE FALTABA)
+    Route::get('/payments', [PaymentController::class, 'index']); 
+    Route::post('/payments/create-intent', [PaymentController::class, 'createPaymentIntent']); 
+    Route::post('/payments', [PaymentController::class, 'store']); 
 
 });
